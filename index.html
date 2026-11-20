@@ -543,19 +543,19 @@
       <div class="kpi-item">
         <span class="kpi-title">Longitud media (Lq)</span>
         <span class="kpi-val" id="kpi-lq">0,00 req.</span>
-        <span class="kpi-sub" id="kpi-lq-teo">Teórico M/M/c: 7,35</span>
+        <span class="kpi-sub" id="kpi-lq-teo">Teórico M/M/c: 7,09</span>
       </div>
 
       <div class="kpi-item">
         <span class="kpi-title">Espera en cola (Wq)</span>
         <span class="kpi-val" id="kpi-wq">0,0 ms</span>
-        <span class="kpi-sub" id="kpi-wq-teo">Teórico M/M/c: 163,3 ms</span>
+        <span class="kpi-sub" id="kpi-wq-teo">Teórico M/M/c: 157,6 ms</span>
       </div>
 
       <div class="kpi-item">
         <span class="kpi-title">Tiempo sistema (W)</span>
         <span class="kpi-val" id="kpi-w">0,0 ms</span>
-        <span class="kpi-sub" id="kpi-w-teo">Teórico M/M/c: 243,3 ms</span>
+        <span class="kpi-sub" id="kpi-w-teo">Teórico M/M/c: 237,6 ms</span>
       </div>
 
       <div class="kpi-item">
@@ -714,6 +714,7 @@
     let reqCounter = 0;
     let queue = [];
     let threads = [];
+    let lastQueueSig = '';
 
     // Live Metrics
     let totalWaitTime = 0;
@@ -983,6 +984,7 @@
       nextArrivalTime = expRandom(lambda);
       reqCounter = 0;
       queue = [];
+      lastQueueSig = '';
       totalWaitTime = 0;
       totalSystemTime = 0;
       servedCount = 0;
@@ -1070,25 +1072,29 @@
       document.getElementById('sim-clock').textContent = fmtComma(simTime, 1);
       document.getElementById('fifo-badge').textContent = `${queue.length} en espera`;
 
-      const fifoBox = document.getElementById('fifo-box');
-      if (queue.length === 0) {
-        fifoBox.innerHTML = '<div class="fifo-empty">Cola vacía</div>';
-      } else {
-        fifoBox.innerHTML = '';
-        const visible = queue.slice(0, 18).reverse();
-        if (queue.length > 18) {
-          const extra = document.createElement('div');
-          extra.className = 'proc-block';
-          extra.style.background = '#71717a';
-          extra.textContent = `+${queue.length - 18}`;
-          fifoBox.appendChild(extra);
+      const qSig = queue.length === 0 ? 'empty' : `${queue.length}:${queue[0].id}`;
+      if (qSig !== lastQueueSig) {
+        lastQueueSig = qSig;
+        const fifoBox = document.getElementById('fifo-box');
+        if (queue.length === 0) {
+          fifoBox.innerHTML = '<div class="fifo-empty">Cola vacía</div>';
+        } else {
+          fifoBox.innerHTML = '';
+          const visible = queue.slice(0, 18).reverse();
+          if (queue.length > 18) {
+            const extra = document.createElement('div');
+            extra.className = 'proc-block';
+            extra.style.background = '#71717a';
+            extra.textContent = `+${queue.length - 18}`;
+            fifoBox.appendChild(extra);
+          }
+          visible.forEach(r => {
+            const el = document.createElement('div');
+            el.className = 'proc-block';
+            el.textContent = `R${r.id}`;
+            fifoBox.appendChild(el);
+          });
         }
-        visible.forEach(r => {
-          const el = document.createElement('div');
-          el.className = 'proc-block';
-          el.textContent = `R${r.id}`;
-          fifoBox.appendChild(el);
-        });
       }
 
       threads.forEach(t => {
@@ -1276,7 +1282,7 @@
     function drawWqBarComparison(resBase, resOpt, teoBase, teoOpt) {
       const canvas = document.getElementById('py-chart-3');
       const { ctx, w, h } = setupCanvas(canvas);
-      const padL = 42, padR = 14, padT = 18, padB = 24;
+      const padL = 50, padR = 14, padT = 18, padB = 24;
       const plotW = w - padL - padR;
       const plotH = h - padT - padB;
 
@@ -1304,7 +1310,7 @@
         ctx.moveTo(padL, y);
         ctx.lineTo(w - padR, y);
         ctx.stroke();
-        ctx.fillText(Math.round(maxVal * ratio), padL - 6, y + 3.5);
+        ctx.fillText(`${Math.round(maxVal * ratio)} ms`, padL - 6, y + 3.5);
       }
 
       const groups = [
@@ -1360,7 +1366,7 @@
     function drawDualAxisComparison(resBase, resOpt) {
       const canvas = document.getElementById('py-chart-4');
       const { ctx, w, h } = setupCanvas(canvas);
-      const padL = 38, padR = 38, padT = 18, padB = 24;
+      const padL = 40, padR = 48, padT = 18, padB = 24;
       const plotW = w - padL - padR;
       const plotH = h - padT - padB;
 
@@ -1387,7 +1393,7 @@
 
         ctx.fillStyle = '#0f766e';
         ctx.textAlign = 'left';
-        ctx.fillText(fmtComma(maxLq * ratio, 1), w - padR + 5, y + 3.5);
+        ctx.fillText(`${fmtComma(maxLq * ratio, 1)} req`, w - padR + 5, y + 3.5);
       }
 
       const groups = [
@@ -1466,10 +1472,9 @@
       updateBatchComparison();
     }
 
-    // Bucle de simulación estable con respaldo
+    // Bucle de simulación estable con requestAnimationFrame
     let lastTickTime = performance.now();
-    function tick() {
-      const now = performance.now();
+    function animLoop(now) {
       const rawDt = (now - lastTickTime) / 1000;
       lastTickTime = now;
       const dt = Math.min(0.05, Math.max(0, rawDt));
@@ -1479,10 +1484,6 @@
         updateUI();
         drawLiveChart();
       }
-    }
-
-    function animLoop() {
-      tick();
       requestAnimationFrame(animLoop);
     }
 
@@ -1497,7 +1498,6 @@
     updateBatchComparison();
     lastTickTime = performance.now();
     requestAnimationFrame(animLoop);
-    setInterval(tick, 33);
   </script>
 </body>
 </html>
