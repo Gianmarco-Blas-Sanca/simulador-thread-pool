@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Thread Pool (M/M/c)</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f4f4f5;
+      --card: #ffffff;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --muted: #71717a;
+      --blue: #2563eb;
+      --blue-soft: #e0f2fe;
+      --blue-border: #bae6fd;
+      --gold: #9a7b2c;
+      --gold-text: #ffffff;
+      --red: #e11d48;
+      --amber: #f59e0b;
+      --teal: #0d9488;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 28px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 1120px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* Top Action Bar */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .main-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      transition: all 0.15s ease;
+    }
+
+    .btn-pill:hover {
+      background: #f4f4f5;
+    }
+
+    .btn-pill.reset {
+      background: var(--blue-soft);
+      border-color: var(--blue-border);
+      color: #0369a1;
+    }
+
+    .btn-pill.reset:hover {
+      background: #bae6fd;
+    }
+
+    .preset-pills {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-preset {
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: #3f3f46;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-preset:hover {
+      border-color: #a1a1aa;
+      background: #e4e4e7;
+    }
+
+    .btn-preset.active {
+      background: #18181b;
+      color: #ffffff;
+      border-color: #18181b;
+    }
+
+    /* KPI Banner (6 indicadores incluyendo W) */
+    .kpi-banner {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 18px 22px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .kpi-banner {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .kpi-banner {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .kpi-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .kpi-title {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .kpi-val {
+      font-size: 1.45rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-sub {
+      font-size: 0.73rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Main Workspace Container (FIFO Queue + Live Chart) */
+    .workspace {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 20px 24px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .col-block {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .section-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* FIFO White Box with Olive-Gold Vertical Blocks */
+    .fifo-box {
+      background: var(--card);
+      border-radius: 14px;
+      height: 112px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .fifo-empty {
+      width: 100%;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+
+    .proc-block {
+      flex: 0 0 auto;
+      width: 44px;
+      height: 70px;
+      background: var(--gold);
+      color: var(--gold-text);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Live Chart Block inside Workspace */
+    .chart-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chart-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .clock-text {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    canvas#queue-chart {
+      width: 100%;
+      height: 150px;
+      display: block;
+    }
+
+    /* Sliders Bar */
+    .sliders-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      padding: 4px 2px 6px 2px;
+    }
+
+    @media (max-width: 900px) {
+      .sliders-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 540px) {
+      .sliders-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .slider-item {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .slider-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider-label {
+      font-size: 0.88rem;
+      color: #27272a;
+      font-weight: 500;
+    }
+
+    .value-pill {
+      background: var(--surface);
+      padding: 5px 12px;
+      border-radius: 10px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      min-width: 68px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #e4e4e7;
+      border-radius: 999px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 4px;
+      height: 18px;
+      border-radius: 2px;
+      background: #18181b;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 4px;
+      height: 18px;
+      border: none;
+      border-radius: 2px;
+      background: #18181b;
+      cursor: pointer;
+    }
+
+    /* Worker Threads Section */
+    .threads-panel {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 18px 24px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .threads-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+      gap: 12px;
+    }
+
+    .thread-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .thread-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+
+    .thread-name {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .thread-req {
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .thread-req.idle {
+      font-weight: 400;
+      color: #a1a1aa;
+      font-size: 0.8rem;
+    }
+
+    .prog-track {
+      width: 100%;
+      height: 6px;
+      background: #f4f4f5;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .prog-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--blue);
+      border-radius: 999px;
+      transition: width 0.04s linear;
+    }
+
+    /* 4 Gráficas Comparativas (Equivalente Python Matplotlib 2x2) */
+    .analytics-panel {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 20px 24px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .analytics-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .analytics-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .charts-2x2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 860px) {
+      .charts-2x2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .chart-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chart-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chart-card-title {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .legend-inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.74rem;
+      color: var(--muted);
+    }
+
+    .leg-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .leg-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .leg-dash {
+      width: 12px;
+      height: 0;
+      border-top: 2px dashed #18181b;
+      display: inline-block;
+    }
+
+    .leg-dot-line {
+      width: 12px;
+      height: 0;
+      border-top: 2px dotted #e11d48;
+      display: inline-block;
+    }
+
+    canvas.py-chart {
+      width: 100%;
+      height: 215px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top Controls -->
+    <div class="top-bar">
+      <div class="main-actions">
+        <button class="btn-pill" id="btn-toggle" onclick="toggleSim()">
+          <span id="icon-toggle">❚❚</span>
+          <span id="text-toggle">Pausar</span>
+        </button>
+        <button class="btn-pill reset" onclick="resetSim()">
+          <span>↻</span>
+          <span>Reiniciar</span>
+        </button>
+      </div>
+
+      <div class="preset-pills">
+        <button class="btn-preset active" id="preset-asis" onclick="applyPreset(4, 45, 80, 'asis')">
+          Escenario Base (As-Is: c=4)
+        </button>
+        <button class="btn-preset" id="preset-tobe" onclick="applyPreset(6, 45, 80, 'tobe')">
+          Optimizado (To-Be: c=6)
+        </button>
+        <button class="btn-preset" id="preset-stress" onclick="applyPreset(4, 49, 80, 'stress')">
+          Alta Congestión (ρ=98%)
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI Summary Box -->
+    <div class="kpi-banner">
+      <div class="kpi-item">
+        <span class="kpi-title">En cola FIFO</span>
+        <span class="kpi-val" id="kpi-qnow">0 req.</span>
+        <span class="kpi-sub" id="kpi-cap">Capacidad: 50,0 req/s</span>
+      </div>
+
+      <div class="kpi-item">
+        <span class="kpi-title">Longitud media (Lq)</span>
+        <span class="kpi-val" id="kpi-lq">0,00 req.</span>
+        <span class="kpi-sub" id="kpi-lq-teo">Teórico M/M/c: 7,35</span>
+      </div>
+
+      <div class="kpi-item">
+        <span class="kpi-title">Espera en cola (Wq)</span>
+        <span class="kpi-val" id="kpi-wq">0,0 ms</span>
+        <span class="kpi-sub" id="kpi-wq-teo">Teórico M/M/c: 163,3 ms</span>
+      </div>
+
+      <div class="kpi-item">
+        <span class="kpi-title">Tiempo sistema (W)</span>
+        <span class="kpi-val" id="kpi-w">0,0 ms</span>
+        <span class="kpi-sub" id="kpi-w-teo">Teórico M/M/c: 243,3 ms</span>
+      </div>
+
+      <div class="kpi-item">
+        <span class="kpi-title">Atendidas</span>
+        <span class="kpi-val" id="kpi-served">0</span>
+        <span class="kpi-sub" id="kpi-little">Little (λ·Wq): 0,00</span>
+      </div>
+
+      <div class="kpi-item">
+        <span class="kpi-title">Utilización Pool (ρ)</span>
+        <span class="kpi-val" id="kpi-rho">0,0 %</span>
+        <span class="kpi-sub" id="kpi-rho-teo">Teórico: 90,0 %</span>
+      </div>
+    </div>
+
+    <!-- Middle Simulation Workspace (FIFO Queue + Live Evolution Chart) -->
+    <div class="workspace">
+      <div class="col-block">
+        <div class="section-label">
+          <span>COLA DE ENTRADA (FIFO)</span>
+          <span id="fifo-badge" style="font-weight:500;">0 en espera</span>
+        </div>
+        <div class="fifo-box" id="fifo-box">
+          <div class="fifo-empty">Cola vacía</div>
+        </div>
+      </div>
+
+      <div class="chart-section">
+        <div class="chart-meta">
+          <span class="section-label">LONGITUD DE COLA EN TIEMPO REAL Q(t)</span>
+          <span class="clock-text">t = <span id="sim-clock">0,0</span> s</span>
+        </div>
+        <canvas id="queue-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Parameter Configuration Sliders -->
+    <div class="sliders-grid">
+      <div class="slider-item">
+        <div class="slider-top">
+          <span class="slider-label">Hilos en el Pool (c)</span>
+          <span class="value-pill" id="val-c">4</span>
+        </div>
+        <input type="range" id="slider-c" min="1" max="10" value="4" oninput="onSliderChange()" />
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-top">
+          <span class="slider-label">Tasa de llegada λ</span>
+          <span class="value-pill" id="val-lambda">45 req/s</span>
+        </div>
+        <input type="range" id="slider-lambda" min="5" max="100" value="45" oninput="onSliderChange()" />
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-top">
+          <span class="slider-label">Servicio medio 1/μ</span>
+          <span class="value-pill" id="val-service">80 ms</span>
+        </div>
+        <input type="range" id="slider-service" min="20" max="200" step="5" value="80" oninput="onSliderChange()" />
+      </div>
+
+      <div class="slider-item">
+        <div class="slider-top">
+          <span class="slider-label">Velocidad</span>
+          <span class="value-pill" id="val-speed">1,0x</span>
+        </div>
+        <input type="range" id="slider-speed" min="0.0" max="2.0" step="0.2" value="1.0" oninput="onSpeedChange()" />
+      </div>
+    </div>
+
+    <!-- Worker Threads Section -->
+    <div class="threads-panel">
+      <div class="section-label">
+        <span id="threads-title">WORKER THREADS (4)</span>
+        <span id="stability-tag" style="color:#16a34a; font-weight:600;">Estable (ρ &lt; 100%)</span>
+      </div>
+      <div class="threads-grid" id="threads-list"></div>
+    </div>
+
+    <!-- 4 Gráficas Comparativas de Python (Simulación de 600s) -->
+    <div class="analytics-panel">
+      <div class="analytics-header">
+        <div>
+          <div class="section-label" style="color:var(--text);">
+            ANÁLISIS COMPARATIVO DE ESCENARIOS (SIMULACIÓN DISCRETA DE 600 s)
+          </div>
+          <div class="analytics-sub" id="batch-summary">
+            Comparando Escenario Base (c = 4) frente a Optimizado (c = 6) bajo λ = 45 req/s y 1/μ = 80 ms.
+          </div>
+        </div>
+        <button class="btn-pill" onclick="rerunBatchComparison()" style="padding:7px 14px; font-size:0.82rem;">
+          <span>↻</span>
+          <span>Recalcular muestra (600 s)</span>
+        </button>
+      </div>
+
+      <div class="charts-2x2">
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <span class="chart-card-title" id="title-chart-1">1. Cola FIFO — Escenario Base (c = 4 hilos)</span>
+            <div class="legend-inline">
+              <span class="leg-item"><span class="leg-dash"></span><span id="leg-lq-base">Media Lq = 7,42 req</span></span>
+            </div>
+          </div>
+          <canvas class="py-chart" id="py-chart-1"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <span class="chart-card-title" id="title-chart-2">2. Cola FIFO — Escenario Optimizado (c = 6 hilos)</span>
+            <div class="legend-inline">
+              <span class="leg-item"><span class="leg-dash"></span><span id="leg-lq-opt">Media Lq = 0,36 req</span></span>
+            </div>
+          </div>
+          <canvas class="py-chart" id="py-chart-2"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <span class="chart-card-title">3. Espera Media en Cola (Wq): Simulado vs. Teórico</span>
+            <div class="legend-inline">
+              <span class="leg-item"><span class="leg-swatch" style="background:#2563eb;"></span>Simulado</span>
+              <span class="leg-item"><span class="leg-swatch" style="background:#94a3b8;"></span>Teórico</span>
+              <span class="leg-item"><span class="leg-dot-line"></span><span id="leg-serv-line">1/μ (80 ms)</span></span>
+            </div>
+          </div>
+          <canvas class="py-chart" id="py-chart-3"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <span class="chart-card-title">4. Utilización del Pool (ρ) vs. Congestión (Lq)</span>
+            <div class="legend-inline">
+              <span class="leg-item"><span class="leg-swatch" style="background:#f59e0b;"></span>Utilización ρ (%)</span>
+              <span class="leg-item"><span class="leg-swatch" style="background:#0d9488;"></span>Cola media Lq (req)</span>
+            </div>
+          </div>
+          <canvas class="py-chart" id="py-chart-4"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Parameters
+    let c = 4;
+    let lambda = 45;
+    let meanServiceMs = 80;
+    let simSpeed = 1.0;
+    let running = true;
+
+    // Live simulation state
+    let simTime = 0;
+    let nextArrivalTime = 0;
+    let reqCounter = 0;
+    let queue = [];
+    let threads = [];
+
+    // Live Metrics
+    let totalWaitTime = 0;
+    let totalSystemTime = 0;
+    let servedCount = 0;
+    let totalBusyTime = 0;
+    let areaQueue = 0;
+    let history = [];
+    let lastSample = 0;
+
+    // Seeded PRNG (Mulberry32)
+    let batchSeed = 42;
+    let cachedBatch = null;
+
+    function createPRNG(seed) {
+      let a = seed >>> 0;
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function fmtComma(num, decimals = 1) {
+      if (!isFinite(num)) return '∞';
+      return num.toFixed(decimals).replace('.', ',');
+    }
+
+    function expRandom(rate, rng = Math.random) {
+      let u = rng();
+      if (u >= 1) u = 0.999999999;
+      return -Math.log(1 - u) / rate;
+    }
+
+    function factorial(n) {
+      let r = 1;
+      for (let i = 2; i <= n; i++) r *= i;
+      return r;
+    }
+
+    function calcMMC(lam, mu, servers) {
+      const rho = lam / (servers * mu);
+      if (rho >= 1) {
+        return { rhoPct: rho * 100, lq: Infinity, wqMs: Infinity, wMs: Infinity, stable: false };
+      }
+      const a = lam / mu;
+      let sum = 0;
+      for (let k = 0; k < servers; k++) sum += Math.pow(a, k) / factorial(k);
+      const last = (Math.pow(a, servers) / factorial(servers)) * (1 / (1 - rho));
+      const p0 = 1 / (sum + last);
+      const pw = last * p0;
+      const lq = (pw * rho) / (1 - rho);
+      const wqSec = lq / lam;
+      const wSec = wqSec + (1 / mu);
+      return {
+        rhoPct: rho * 100,
+        lq,
+        wqMs: wqSec * 1000,
+        wMs: wSec * 1000,
+        stable: true
+      };
+    }
+
+    // Simulación discreta rápida de 600s con cola O(1)
+    function runBatchDES(servers, lam, servMs, seed = 42, horizon = 600) {
+      const rng = createPRNG(seed);
+      const mu = 1000 / servMs;
+      let t = 0;
+      let nextArr = expRandom(lam, rng);
+      const endTimes = new Array(servers).fill(Infinity);
+      const busyArrivals = new Array(servers).fill(0);
+      const fifo = [];
+      let fifoHead = 0;
+
+      let waitSum = 0;
+      let sysSum = 0;
+      let served = 0;
+      let busyTotal = 0;
+      let areaQ = 0;
+      let lastT = 0;
+
+      const histT = [0];
+      const histQ = [0];
+
+      function queueLen() {
+        return fifo.length - fifoHead;
+      }
+
+      function record(now) {
+        const qLen = queueLen();
+        areaQ += qLen * (now - lastT);
+        lastT = now;
+        if (now <= 60) {
+          histT.push(now);
+          histQ.push(qLen);
+        }
+      }
+
+      while (t < horizon) {
+        let minDep = Infinity;
+        let depIdx = -1;
+        for (let i = 0; i < servers; i++) {
+          if (endTimes[i] < minDep) {
+            minDep = endTimes[i];
+            depIdx = i;
+          }
+        }
+
+        if (nextArr <= minDep) {
+          if (nextArr > horizon) break;
+          t = nextArr;
+          record(t);
+          nextArr = t + expRandom(lam, rng);
+
+          let freeIdx = -1;
+          for (let i = 0; i < servers; i++) {
+            if (endTimes[i] === Infinity) {
+              freeIdx = i;
+              break;
+            }
+          }
+
+          if (freeIdx !== -1) {
+            const dur = expRandom(mu, rng);
+            endTimes[freeIdx] = t + dur;
+            busyArrivals[freeIdx] = t;
+            busyTotal += Math.min(dur, Math.max(0, horizon - t));
+          } else {
+            fifo.push(t);
+          }
+        } else {
+          if (minDep > horizon) break;
+          t = minDep;
+          record(t);
+          served++;
+          sysSum += (t - busyArrivals[depIdx]);
+
+          if (queueLen() > 0) {
+            const arrT = fifo[fifoHead++];
+            waitSum += (t - arrT);
+            const dur = expRandom(mu, rng);
+            endTimes[depIdx] = t + dur;
+            busyArrivals[depIdx] = arrT;
+            busyTotal += Math.min(dur, Math.max(0, horizon - t));
+          } else {
+            endTimes[depIdx] = Infinity;
+          }
+        }
+      }
+
+      record(horizon);
+      const rhoSim = (busyTotal / (servers * horizon)) * 100;
+      const lqSim = areaQ / horizon;
+      const wqMs = served > 0 ? (waitSum / served) * 1000 : 0;
+      const wMs = served > 0 ? (sysSum / served) * 1000 : 0;
+
+      return { c: servers, rho: rhoSim, lq: lqSim, wqMs, wMs, histT, histQ };
+    }
+
+    function initThreads() {
+      const busyOld = threads.filter(t => t.busy);
+      threads = [];
+      for (let i = 0; i < c; i++) {
+        if (busyOld[i]) {
+          threads.push({ ...busyOld[i], id: i + 1 });
+        } else {
+          threads.push({ id: i + 1, busy: false, req: null, endTime: 0, duration: 0 });
+        }
+      }
+      for (let i = c; i < busyOld.length; i++) {
+        queue.unshift(busyOld[i].req);
+      }
+      renderThreadsDOM();
+    }
+
+    function renderThreadsDOM() {
+      const list = document.getElementById('threads-list');
+      list.innerHTML = '';
+      threads.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'thread-card';
+        card.innerHTML = `
+          <div class="thread-header">
+            <span class="thread-name">Thread T${t.id}</span>
+            <span class="thread-req ${t.busy ? '' : 'idle'}" id="t-req-${t.id}">
+              ${t.busy ? 'R' + t.req.id : 'Libre'}
+            </span>
+          </div>
+          <div class="prog-track">
+            <div class="prog-fill" id="t-prog-${t.id}" style="width:0%"></div>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function clearPresetActive() {
+      document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
+    }
+
+    function onSliderChange() {
+      clearPresetActive();
+      syncParams();
+      updateBatchComparison();
+    }
+
+    function onSpeedChange() {
+      simSpeed = parseFloat(document.getElementById('slider-speed').value);
+      document.getElementById('val-speed').textContent = `${fmtComma(simSpeed, 1)}x`;
+    }
+
+    function syncParams() {
+      c = parseInt(document.getElementById('slider-c').value, 10);
+      lambda = parseInt(document.getElementById('slider-lambda').value, 10);
+      meanServiceMs = parseInt(document.getElementById('slider-service').value, 10);
+
+      document.getElementById('val-c').textContent = c;
+      document.getElementById('val-lambda').textContent = `${lambda} req/s`;
+      document.getElementById('val-service').textContent = `${meanServiceMs} ms`;
+      document.getElementById('threads-title').textContent = `WORKER THREADS (${c})`;
+
+      const mu = 1000 / meanServiceMs;
+      document.getElementById('kpi-cap').textContent = `Capacidad: ${fmtComma(c * mu, 1)} req/s`;
+
+      if (threads.length !== c) initThreads();
+
+      const teo = calcMMC(lambda, mu, c);
+      document.getElementById('kpi-rho-teo').textContent = `Teórico: ${fmtComma(teo.rhoPct, 1)} %`;
+      const tag = document.getElementById('stability-tag');
+      if (teo.stable) {
+        document.getElementById('kpi-lq-teo').textContent = `Teórico M/M/c: ${fmtComma(teo.lq, 2)}`;
+        document.getElementById('kpi-wq-teo').textContent = `Teórico M/M/c: ${fmtComma(teo.wqMs, 1)} ms`;
+        document.getElementById('kpi-w-teo').textContent = `Teórico M/M/c: ${fmtComma(teo.wMs, 1)} ms`;
+        tag.textContent = 'Estable (ρ < 100%)';
+        tag.style.color = '#16a34a';
+      } else {
+        document.getElementById('kpi-lq-teo').textContent = 'Teórico: ∞ (Inestable)';
+        document.getElementById('kpi-wq-teo').textContent = 'Teórico: ∞ (Inestable)';
+        document.getElementById('kpi-w-teo').textContent = 'Teórico: ∞ (Inestable)';
+        tag.textContent = 'Saturado (ρ ≥ 100%)';
+        tag.style.color = '#e11d48';
+      }
+    }
+
+    function applyPreset(newC, newLam, newServ, key) {
+      document.getElementById('slider-c').value = newC;
+      document.getElementById('slider-lambda').value = newLam;
+      document.getElementById('slider-service').value = newServ;
+      clearPresetActive();
+      const btn = document.getElementById(`preset-${key}`);
+      if (btn) btn.classList.add('active');
+      syncParams();
+      resetSim();
+      updateBatchComparison();
+    }
+
+    function toggleSim() {
+      running = !running;
+      document.getElementById('icon-toggle').textContent = running ? '❚❚' : '▶';
+      document.getElementById('text-toggle').textContent = running ? 'Pausar' : 'Reanudar';
+      lastTickTime = performance.now();
+    }
+
+    function resetSim() {
+      simTime = 0;
+      nextArrivalTime = expRandom(lambda);
+      reqCounter = 0;
+      queue = [];
+      totalWaitTime = 0;
+      totalSystemTime = 0;
+      servedCount = 0;
+      totalBusyTime = 0;
+      areaQueue = 0;
+      history = [{ t: 0, q: 0, lq: 0 }];
+      lastSample = 0;
+      threads = [];
+      initThreads();
+      updateUI();
+      drawLiveChart();
+    }
+
+    function startService(thread, req) {
+      const mu = 1000 / meanServiceMs;
+      totalWaitTime += (simTime - req.arrivalTime);
+      const dur = expRandom(mu);
+      thread.busy = true;
+      thread.req = req;
+      thread.duration = dur;
+      thread.endTime = simTime + dur;
+    }
+
+    function stepSimulation(dt) {
+      if (dt <= 0) return;
+      const targetTime = simTime + dt;
+
+      while (simTime < targetTime) {
+        let nextEvent = targetTime;
+        let type = 'step';
+        let targetThread = null;
+
+        if (nextArrivalTime < nextEvent) {
+          nextEvent = nextArrivalTime;
+          type = 'arrival';
+        }
+
+        for (let i = 0; i < threads.length; i++) {
+          const t = threads[i];
+          if (t.busy && t.endTime < nextEvent) {
+            nextEvent = t.endTime;
+            type = 'departure';
+            targetThread = t;
+          }
+        }
+
+        const delta = nextEvent - simTime;
+        areaQueue += queue.length * delta;
+        let busyCount = 0;
+        for (let i = 0; i < threads.length; i++) {
+          if (threads[i].busy) busyCount++;
+        }
+        totalBusyTime += busyCount * delta;
+        simTime = nextEvent;
+
+        if (type === 'arrival') {
+          reqCounter++;
+          const req = { id: reqCounter, arrivalTime: simTime };
+          nextArrivalTime = simTime + expRandom(lambda);
+
+          const free = threads.find(t => !t.busy);
+          if (free) startService(free, req);
+          else queue.push(req);
+        } else if (type === 'departure' && targetThread) {
+          servedCount++;
+          totalSystemTime += (simTime - targetThread.req.arrivalTime);
+          targetThread.busy = false;
+          targetThread.req = null;
+
+          if (queue.length > 0) {
+            startService(targetThread, queue.shift());
+          }
+        }
+      }
+
+      if (simTime - lastSample >= 0.08) {
+        const lqNow = simTime > 0 ? areaQueue / simTime : 0;
+        history.push({ t: simTime, q: queue.length, lq: lqNow });
+        if (history.length > 150) history.shift();
+        lastSample = simTime;
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('sim-clock').textContent = fmtComma(simTime, 1);
+      document.getElementById('fifo-badge').textContent = `${queue.length} en espera`;
+
+      const fifoBox = document.getElementById('fifo-box');
+      if (queue.length === 0) {
+        fifoBox.innerHTML = '<div class="fifo-empty">Cola vacía</div>';
+      } else {
+        fifoBox.innerHTML = '';
+        const visible = queue.slice(0, 18).reverse();
+        if (queue.length > 18) {
+          const extra = document.createElement('div');
+          extra.className = 'proc-block';
+          extra.style.background = '#71717a';
+          extra.textContent = `+${queue.length - 18}`;
+          fifoBox.appendChild(extra);
+        }
+        visible.forEach(r => {
+          const el = document.createElement('div');
+          el.className = 'proc-block';
+          el.textContent = `R${r.id}`;
+          fifoBox.appendChild(el);
+        });
+      }
+
+      threads.forEach(t => {
+        const reqEl = document.getElementById(`t-req-${t.id}`);
+        const progEl = document.getElementById(`t-prog-${t.id}`);
+        if (!reqEl || !progEl) return;
+
+        if (t.busy) {
+          reqEl.textContent = `R${t.req.id}`;
+          reqEl.className = 'thread-req';
+          const elapsed = t.duration - (t.endTime - simTime);
+          const pct = Math.min(100, Math.max(0, (elapsed / t.duration) * 100));
+          progEl.style.width = `${pct}%`;
+        } else {
+          reqEl.textContent = 'Libre';
+          reqEl.className = 'thread-req idle';
+          progEl.style.width = '0%';
+        }
+      });
+
+      const rhoSim = simTime > 0 ? (totalBusyTime / (c * simTime)) * 100 : 0;
+      const lqSim = simTime > 0 ? areaQueue / simTime : 0;
+      const wqSimMs = servedCount > 0 ? (totalWaitTime / servedCount) * 1000 : 0;
+      const wSimMs = servedCount > 0 ? (totalSystemTime / servedCount) * 1000 : 0;
+      const littleLq = lambda * (wqSimMs / 1000);
+
+      document.getElementById('kpi-qnow').textContent = `${queue.length} req.`;
+      document.getElementById('kpi-lq').textContent = `${fmtComma(lqSim, 2)} req.`;
+      document.getElementById('kpi-wq').textContent = `${fmtComma(wqSimMs, 1)} ms`;
+      document.getElementById('kpi-w').textContent = `${fmtComma(wSimMs, 1)} ms`;
+      document.getElementById('kpi-served').textContent = servedCount;
+      document.getElementById('kpi-rho').textContent = `${fmtComma(rhoSim, 1)} %`;
+      document.getElementById('kpi-little').textContent = `Little (λ·Wq): ${fmtComma(littleLq, 2)}`;
+    }
+
+    function setupCanvas(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(100, rect.width);
+      const height = Math.max(80, rect.height);
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      return { ctx, w: width, h: height };
+    }
+
+    function drawLiveChart() {
+      const canvas = document.getElementById('queue-chart');
+      const { ctx, w, h } = setupCanvas(canvas);
+      const padL = 28, padR = 12, padT = 12, padB = 14;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      ctx.clearRect(0, 0, w, h);
+      if (history.length < 2) return;
+
+      const rawMax = Math.max(10, ...history.map(d => Math.max(d.q, d.lq)));
+      const maxY = Math.ceil(rawMax / 5) * 5;
+
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#71717a';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.textAlign = 'right';
+
+      [0, 0.5, 1].forEach(ratio => {
+        const y = padT + plotH * (1 - ratio);
+        const val = Math.round(maxY * ratio);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.stroke();
+        ctx.fillText(val, padL - 6, y + 4);
+      });
+
+      const latestLq = history[history.length - 1].lq;
+      const avgY = padT + plotH - (latestLq / maxY) * plotH;
+      ctx.strokeStyle = 'rgba(225, 29, 72, 0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padL, avgY);
+      ctx.lineTo(w - padR, avgY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      history.forEach((pt, i) => {
+        const x = padL + (i / (history.length - 1)) * plotW;
+        const y = padT + plotH - (pt.q / maxY) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      const lastX = padL + plotW;
+      const baseY = padT + plotH;
+      ctx.lineTo(lastX, baseY);
+      ctx.lineTo(padL, baseY);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(37, 99, 235, 0.14)';
+      ctx.fill();
+
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      let tipX = padL, tipY = baseY;
+      history.forEach((pt, i) => {
+        const x = padL + (i / (history.length - 1)) * plotW;
+        const y = padT + plotH - (pt.q / maxY) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        tipX = x;
+        tipY = y;
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = '#2563eb';
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Dibujo de las 4 gráficas comparativas equivalentes a Python Matplotlib
+    function drawStepComparison(canvasId, simData, colorHex, maxY) {
+      const canvas = document.getElementById(canvasId);
+      const { ctx, w, h } = setupCanvas(canvas);
+      const padL = 34, padR = 12, padT = 12, padB = 22;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#71717a';
+      ctx.font = '10.5px Inter, sans-serif';
+      ctx.textAlign = 'right';
+
+      const ticks = 4;
+      for (let i = 0; i <= ticks; i++) {
+        const ratio = i / ticks;
+        const y = padT + plotH * (1 - ratio);
+        const val = Math.round(maxY * ratio);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.stroke();
+        ctx.fillText(val, padL - 6, y + 3.5);
+      }
+
+      ctx.textAlign = 'center';
+      [0, 15, 30, 45, 60].forEach(sec => {
+        const x = padL + (sec / 60) * plotW;
+        ctx.fillText(`${sec}s`, x, h - 5);
+      });
+
+      ctx.strokeStyle = colorHex;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      for (let i = 0; i < simData.histT.length; i++) {
+        const x = padL + (simData.histT[i] / 60) * plotW;
+        const y = padT + plotH - (Math.min(simData.histQ[i], maxY) / maxY) * plotH;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevY = padT + plotH - (Math.min(simData.histQ[i - 1], maxY) / maxY) * plotH;
+          ctx.lineTo(x, prevY);
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      const lqClamped = Math.min(simData.lq, maxY);
+      const meanY = padT + plotH - (lqClamped / maxY) * plotH;
+      ctx.strokeStyle = '#18181b';
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(padL, meanY);
+      ctx.lineTo(w - padR, meanY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawWqBarComparison(resBase, resOpt, teoBase, teoOpt) {
+      const canvas = document.getElementById('py-chart-3');
+      const { ctx, w, h } = setupCanvas(canvas);
+      const padL = 42, padR = 14, padT = 18, padB = 24;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const vals = [
+        resBase.wqMs,
+        isFinite(teoBase.wqMs) ? teoBase.wqMs : resBase.wqMs,
+        resOpt.wqMs,
+        isFinite(teoOpt.wqMs) ? teoOpt.wqMs : resOpt.wqMs,
+        meanServiceMs
+      ];
+      const maxVal = Math.max(20, ...vals) * 1.18;
+
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#71717a';
+      ctx.font = '10.5px Inter, sans-serif';
+      ctx.textAlign = 'right';
+
+      for (let i = 0; i <= 4; i++) {
+        const ratio = i / 4;
+        const y = padT + plotH * (1 - ratio);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.stroke();
+        ctx.fillText(Math.round(maxVal * ratio), padL - 6, y + 3.5);
+      }
+
+      const groups = [
+        { label: `Base (c = ${resBase.c})`, sim: resBase.wqMs, teo: teoBase.wqMs },
+        { label: `Optimizado (c = ${resOpt.c})`, sim: resOpt.wqMs, teo: teoOpt.wqMs }
+      ];
+
+      const groupW = plotW / 2;
+      const barW = Math.min(38, groupW * 0.24);
+
+      groups.forEach((g, idx) => {
+        const cx = padL + groupW * (idx + 0.5);
+
+        const hSim = (g.sim / maxVal) * plotH;
+        const xSim = cx - barW - 3;
+        const ySim = padT + plotH - hSim;
+        ctx.fillStyle = '#2563eb';
+        ctx.fillRect(xSim, ySim, barW, hSim);
+
+        ctx.fillStyle = '#18181b';
+        ctx.textAlign = 'center';
+        ctx.font = '600 10.5px Inter, sans-serif';
+        ctx.fillText(fmtComma(g.sim, 1), xSim + barW / 2, ySim - 4);
+
+        if (isFinite(g.teo)) {
+          const hTeo = (g.teo / maxVal) * plotH;
+          const xTeo = cx + 3;
+          const yTeo = padT + plotH - hTeo;
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillRect(xTeo, yTeo, barW, hTeo);
+          ctx.fillText(fmtComma(g.teo, 1), xTeo + barW / 2, yTeo - 4);
+        } else {
+          ctx.fillStyle = '#e11d48';
+          ctx.fillText('∞', cx + 3 + barW / 2, padT + plotH - 6);
+        }
+
+        ctx.fillStyle = '#3f3f46';
+        ctx.font = '500 11px Inter, sans-serif';
+        ctx.fillText(g.label, cx, h - 6);
+      });
+
+      const servY = padT + plotH - (meanServiceMs / maxVal) * plotH;
+      ctx.strokeStyle = '#e11d48';
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padL, servY);
+      ctx.lineTo(w - padR, servY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawDualAxisComparison(resBase, resOpt) {
+      const canvas = document.getElementById('py-chart-4');
+      const { ctx, w, h } = setupCanvas(canvas);
+      const padL = 38, padR = 38, padT = 18, padB = 24;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const maxRho = 105;
+      const maxLq = Math.max(2, resBase.lq, resOpt.lq) * 1.25;
+
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 1;
+      ctx.font = '10.5px Inter, sans-serif';
+
+      for (let i = 0; i <= 4; i++) {
+        const ratio = i / 4;
+        const y = padT + plotH * (1 - ratio);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#b45309';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.round(maxRho * ratio)}%`, padL - 5, y + 3.5);
+
+        ctx.fillStyle = '#0f766e';
+        ctx.textAlign = 'left';
+        ctx.fillText(fmtComma(maxLq * ratio, 1), w - padR + 5, y + 3.5);
+      }
+
+      const groups = [
+        { label: `Base (c = ${resBase.c})`, rho: resBase.rho, lq: resBase.lq },
+        { label: `Optimizado (c = ${resOpt.c})`, rho: resOpt.rho, lq: resOpt.lq }
+      ];
+
+      const groupW = plotW / 2;
+      const barW = Math.min(38, groupW * 0.24);
+
+      groups.forEach((g, idx) => {
+        const cx = padL + groupW * (idx + 0.5);
+
+        const hRho = (Math.min(g.rho, maxRho) / maxRho) * plotH;
+        const xRho = cx - barW - 3;
+        const yRho = padT + plotH - hRho;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(xRho, yRho, barW, hRho);
+
+        ctx.fillStyle = '#92400e';
+        ctx.textAlign = 'center';
+        ctx.font = '600 10.5px Inter, sans-serif';
+        ctx.fillText(`${fmtComma(g.rho, 1)}%`, xRho + barW / 2, yRho - 4);
+
+        const hLq = (g.lq / maxLq) * plotH;
+        const xLq = cx + 3;
+        const yLq = padT + plotH - hLq;
+        ctx.fillStyle = '#0d9488';
+        ctx.fillRect(xLq, yLq, barW, hLq);
+
+        ctx.fillStyle = '#115e59';
+        ctx.fillText(fmtComma(g.lq, 2), xLq + barW / 2, yLq - 4);
+
+        ctx.fillStyle = '#3f3f46';
+        ctx.font = '500 11px Inter, sans-serif';
+        ctx.fillText(g.label, cx, h - 6);
+      });
+    }
+
+    function updateBatchComparison() {
+      const mu = 1000 / meanServiceMs;
+      const cBase = (c === 6) ? 4 : c;
+      const cOpt = (c === 6) ? 6 : c + 2;
+
+      const resBase = runBatchDES(cBase, lambda, meanServiceMs, batchSeed, 600);
+      const resOpt = runBatchDES(cOpt, lambda, meanServiceMs, batchSeed, 600);
+      const teoBase = calcMMC(lambda, mu, cBase);
+      const teoOpt = calcMMC(lambda, mu, cOpt);
+      cachedBatch = { resBase, resOpt, teoBase, teoOpt };
+
+      document.getElementById('batch-summary').textContent =
+        `Comparando Escenario Base (c = ${cBase}) frente a Optimizado (c = ${cOpt}) bajo λ = ${lambda} req/s y 1/μ = ${meanServiceMs} ms.`;
+      document.getElementById('title-chart-1').textContent = `1. Cola FIFO — Escenario Base (c = ${cBase} hilos)`;
+      document.getElementById('title-chart-2').textContent = `2. Cola FIFO — Escenario Optimizado (c = ${cOpt} hilos)`;
+      document.getElementById('leg-lq-base').textContent = `Media Lq = ${fmtComma(resBase.lq, 2)} req`;
+      document.getElementById('leg-lq-opt').textContent = `Media Lq = ${fmtComma(resOpt.lq, 2)} req`;
+      document.getElementById('leg-serv-line').textContent = `1/μ (${meanServiceMs} ms)`;
+
+      renderBatchCharts();
+    }
+
+    function renderBatchCharts() {
+      if (!cachedBatch) return;
+      const { resBase, resOpt, teoBase, teoOpt } = cachedBatch;
+      const maxPeak = Math.max(5, ...resBase.histQ, ...resOpt.histQ) + 2;
+      const sharedMaxY = Math.ceil(maxPeak / 5) * 5;
+
+      drawStepComparison('py-chart-1', resBase, '#e11d48', sharedMaxY);
+      drawStepComparison('py-chart-2', resOpt, '#2563eb', sharedMaxY);
+      drawWqBarComparison(resBase, resOpt, teoBase, teoOpt);
+      drawDualAxisComparison(resBase, resOpt);
+    }
+
+    function rerunBatchComparison() {
+      batchSeed += 7;
+      updateBatchComparison();
+    }
+
+    // Bucle de simulación estable con respaldo
+    let lastTickTime = performance.now();
+    function tick() {
+      const now = performance.now();
+      const rawDt = (now - lastTickTime) / 1000;
+      lastTickTime = now;
+      const dt = Math.min(0.05, Math.max(0, rawDt));
+
+      if (running && simSpeed > 0 && dt > 0) {
+        stepSimulation(dt * simSpeed);
+        updateUI();
+        drawLiveChart();
+      }
+    }
+
+    function animLoop() {
+      tick();
+      requestAnimationFrame(animLoop);
+    }
+
+    window.addEventListener('resize', () => {
+      drawLiveChart();
+      renderBatchCharts();
+    });
+
+    onSpeedChange();
+    syncParams();
+    resetSim();
+    updateBatchComparison();
+    lastTickTime = performance.now();
+    requestAnimationFrame(animLoop);
+    setInterval(tick, 33);
+  </script>
+</body>
+</html>
